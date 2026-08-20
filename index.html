@@ -6,6 +6,29 @@
     <title>Unity WebGL Player | EzFirgi</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+      /* #unity-container height is set in JS (see setRealViewportHeight below) so
+         mobile browsers' collapsing address bar can never push content off-screen.
+         100vh/100dvh alone is NOT reliable enough across iOS Safari / Android Chrome. */
+      #unity-container {
+        width: 100vw;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      /* Canvas size is fully controlled by JS (resizeCanvas) to preserve the
+         1080x1920 design ratio - these are just safe defaults before JS runs. */
+      #unity-canvas {
+        display: block;
+      }
+    </style>
   </head>
   <body>
     <div id="unity-container" class="unity-desktop">
@@ -24,7 +47,6 @@
       </div>
     </div>
     <script>
-
       var container = document.querySelector("#unity-container");
       var canvas = document.querySelector("#unity-canvas");
       var loadingBar = document.querySelector("#unity-loading-bar");
@@ -32,12 +54,6 @@
       var fullscreenButton = document.querySelector("#unity-fullscreen-button");
       var warningBanner = document.querySelector("#unity-warning");
 
-      // Shows a temporary message banner/ribbon for a few seconds, or
-      // a permanent error message on top of the canvas if type=='error'.
-      // If type=='warning', a yellow highlight color is used.
-      // Modify or remove this function to customize the visually presented
-      // way that non-critical warnings and error messages are presented to the
-      // user.
       function unityShowBanner(msg, type) {
         function updateBannerVisibility() {
           warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
@@ -69,43 +85,71 @@
         showBanner: unityShowBanner,
       };
 
-      // By default, Unity keeps WebGL canvas render target size matched with
-      // the DOM size of the canvas element (scaled by window.devicePixelRatio)
-      // Set this to false if you want to decouple this synchronization from
-      // happening inside the engine, and you would instead like to size up
-      // the canvas DOM size and WebGL render target sizes yourself.
-      // config.matchWebGLToCanvasSize = false;
+      var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-      // If you would like all file writes inside Unity Application.persistentDataPath
-      // directory to automatically persist so that the contents are remembered when
-      // the user revisits the site the next time, uncomment the following line:
-      // config.autoSyncPersistentDataPath = true;
-      // This autosyncing is currently not the default behavior to avoid regressing
-      // existing user projects that might rely on the earlier manual
-      // JS_FileSystem_Sync() behavior, but in future Unity version, this will be
-      // expected to change.
-
-      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        // Mobile device style: fill the whole browser client area with the game canvas:
-
+      if (isMobile) {
         var meta = document.createElement('meta');
         meta.name = 'viewport';
-        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=yes, viewport-fit=cover';
         document.getElementsByTagName('head')[0].appendChild(meta);
         container.className = "unity-mobile";
         canvas.className = "unity-mobile";
-
-        // To lower canvas resolution on mobile devices to gain some
-        // performance, uncomment the following line:
-        // config.devicePixelRatio = 1;
-
-
-      } else {
-        // Desktop style: Render the game canvas in a window that can be maximized to fullscreen:
-
-        canvas.style.width = "540px";
-        canvas.style.height = "960px";
       }
+
+      // ---------------------------------------------------------------
+      // FIX 1: 100vh is unreliable on mobile browsers (it includes the
+      // area hidden behind the collapsing address bar), which pushes
+      // bottom-anchored UI (Home / Replay / Pause / Lose buttons) off
+      // the real visible viewport. window.innerHeight always reflects
+      // what's actually visible right now, so we use that instead and
+      // recompute it whenever the browser chrome shows/hides or the
+      // device rotates.
+      // ---------------------------------------------------------------
+      function setRealViewportHeight() {
+        container.style.height = window.innerHeight + "px";
+      }
+
+      // ---------------------------------------------------------------
+      // FIX 2: apply the SAME aspect-ratio-preserving sizing to BOTH
+      // desktop and mobile, instead of only desktop. This letterboxes
+      // (adds black bars) rather than stretching or cropping, so the
+      // full 1080x1920 design is always entirely visible - no UI
+      // element ever ends up outside the rendered canvas.
+      // ---------------------------------------------------------------
+      function resizeCanvas() {
+        var DESIGN_WIDTH = 1080;
+        var DESIGN_HEIGHT = 1920;
+        var aspectRatio = DESIGN_WIDTH / DESIGN_HEIGHT; // 0.5625, i.e. 9:16
+
+        var maxHeight = window.innerHeight;
+        var maxWidth = window.innerWidth;
+
+        var height = maxHeight;
+        var width = height * aspectRatio;
+
+        if (width > maxWidth) {
+          width = maxWidth;
+          height = width / aspectRatio;
+        }
+
+        canvas.style.width = width + "px";
+        canvas.style.height = height + "px";
+      }
+
+      function handleViewportChange() {
+        setRealViewportHeight();
+        resizeCanvas();
+      }
+
+      handleViewportChange();
+      window.addEventListener("resize", handleViewportChange);
+      // Mobile browsers often report stale window.innerHeight/innerWidth
+      // for a brief moment right after rotation - re-run once more shortly
+      // after the orientationchange event fires to catch the corrected values.
+      window.addEventListener("orientationchange", function () {
+        handleViewportChange();
+        setTimeout(handleViewportChange, 300);
+      });
 
       loadingBar.style.display = "block";
 
@@ -114,18 +158,17 @@
       script.onload = () => {
         createUnityInstance(canvas, config, (progress) => {
           progressBarFull.style.width = 100 * progress + "%";
-              }).then((unityInstance) => {
-                loadingBar.style.display = "none";
-                fullscreenButton.onclick = () => {
-                  unityInstance.SetFullscreen(1);
-                };
-              }).catch((message) => {
-                alert(message);
-              });
-            };
+        }).then((unityInstance) => {
+          loadingBar.style.display = "none";
+          fullscreenButton.onclick = () => {
+            unityInstance.SetFullscreen(1);
+          };
+        }).catch((message) => {
+          alert(message);
+        });
+      };
 
       document.body.appendChild(script);
-
     </script>
   </body>
 </html>
