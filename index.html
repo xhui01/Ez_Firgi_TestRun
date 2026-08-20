@@ -103,8 +103,14 @@
         var DESIGN_HEIGHT = 1920;
         var aspectRatio = DESIGN_WIDTH / DESIGN_HEIGHT; // 0.5625, i.e. 9:16
 
-        var maxHeight = window.innerHeight;
-        var maxWidth = window.innerWidth;
+        // MARGIN keeps the canvas from ever touching the literal window edges.
+        // 0.96 = use at most 96% of the available space, leaving a ~2% buffer
+        // on each side. Tune this up toward 1.0 for more game, or down for
+        // more breathing room - just don't leave it at exactly 1.0.
+        var MARGIN = 0.96;
+
+        var maxHeight = window.innerHeight * MARGIN;
+        var maxWidth = window.innerWidth * MARGIN;
 
         var height = maxHeight;
         var width = height * aspectRatio;
