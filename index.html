@@ -7,26 +7,14 @@
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
     <style>
+      /* Without this, a canvas taller than the visible browser viewport just
+         runs off the bottom and the browser scrolls instead of clipping -
+         this was the direct cause of buttons appearing "missing". */
       html, body {
         margin: 0;
         padding: 0;
         height: 100%;
         overflow: hidden;
-      }
-      /* #unity-container height is set in JS (see setRealViewportHeight below) so
-         mobile browsers' collapsing address bar can never push content off-screen.
-         100vh/100dvh alone is NOT reliable enough across iOS Safari / Android Chrome. */
-      #unity-container {
-        width: 100vw;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-      }
-      /* Canvas size is fully controlled by JS (resizeCanvas) to preserve the
-         1080x1920 design ratio - these are just safe defaults before JS runs. */
-      #unity-canvas {
-        display: block;
       }
     </style>
   </head>
@@ -47,6 +35,7 @@
       </div>
     </div>
     <script>
+
       var container = document.querySelector("#unity-container");
       var canvas = document.querySelector("#unity-canvas");
       var loadingBar = document.querySelector("#unity-loading-bar");
@@ -97,25 +86,18 @@
       }
 
       // ---------------------------------------------------------------
-      // FIX 1: 100vh is unreliable on mobile browsers (it includes the
-      // area hidden behind the collapsing address bar), which pushes
-      // bottom-anchored UI (Home / Replay / Pause / Lose buttons) off
-      // the real visible viewport. window.innerHeight always reflects
-      // what's actually visible right now, so we use that instead and
-      // recompute it whenever the browser chrome shows/hides or the
-      // device rotates.
+      // Applies to BOTH desktop and mobile now. The old code hardcoded
+      // the canvas to a fixed 540x960 on desktop, which overflows any
+      // browser window shorter than 960px of visible viewport height
+      // (very common once you subtract tabs / address bar). This instead
+      // scales the canvas to fit whatever space is actually available,
+      // while always preserving the real 1080x1920 design ratio via
+      // letterboxing (black bars) so nothing is ever cropped or hidden.
       // ---------------------------------------------------------------
       function setRealViewportHeight() {
         container.style.height = window.innerHeight + "px";
       }
 
-      // ---------------------------------------------------------------
-      // FIX 2: apply the SAME aspect-ratio-preserving sizing to BOTH
-      // desktop and mobile, instead of only desktop. This letterboxes
-      // (adds black bars) rather than stretching or cropping, so the
-      // full 1080x1920 design is always entirely visible - no UI
-      // element ever ends up outside the rendered canvas.
-      // ---------------------------------------------------------------
       function resizeCanvas() {
         var DESIGN_WIDTH = 1080;
         var DESIGN_HEIGHT = 1920;
@@ -143,9 +125,6 @@
 
       handleViewportChange();
       window.addEventListener("resize", handleViewportChange);
-      // Mobile browsers often report stale window.innerHeight/innerWidth
-      // for a brief moment right after rotation - re-run once more shortly
-      // after the orientationchange event fires to catch the corrected values.
       window.addEventListener("orientationchange", function () {
         handleViewportChange();
         setTimeout(handleViewportChange, 300);
@@ -158,17 +137,18 @@
       script.onload = () => {
         createUnityInstance(canvas, config, (progress) => {
           progressBarFull.style.width = 100 * progress + "%";
-        }).then((unityInstance) => {
-          loadingBar.style.display = "none";
-          fullscreenButton.onclick = () => {
-            unityInstance.SetFullscreen(1);
-          };
-        }).catch((message) => {
-          alert(message);
-        });
-      };
+              }).then((unityInstance) => {
+                loadingBar.style.display = "none";
+                fullscreenButton.onclick = () => {
+                  unityInstance.SetFullscreen(1);
+                };
+              }).catch((message) => {
+                alert(message);
+              });
+            };
 
       document.body.appendChild(script);
+
     </script>
   </body>
 </html>
